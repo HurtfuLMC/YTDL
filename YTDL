@@ -1,0 +1,119 @@
+import subprocess
+import requests
+import os
+import tkinter as tk
+from tkinter import filedialog
+import clipboard
+from pytube import YouTube, Playlist
+
+
+def install_package(package_name):
+    try:
+        user_input = input(f"{package_name} is not installed. Do you want to install it? (y/n): ")
+        if user_input.lower() == 'y':
+            subprocess.check_call(["pip", "install", package_name])
+    except Exception as e:
+        print(f"An error occurred while installing {package_name}: {e}")
+
+
+def check_for_updates(repo_owner, repo_name, current_version):
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/releases/latest"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for 4XX or 5XX status codes
+        latest_release = response.json()["tag_name"]
+        if latest_release != current_version:
+            print(f"A new version ({latest_release}) is available! You can download it from:")
+            print(f"https://github.com/{repo_owner}/{repo_name}/releases/latest")
+        else:
+            print("You are using the latest version of the script.")
+    except Exception as e:
+        print(f"An error occurred while checking for updates: {e}")
+
+
+def check_and_install_required_packages():
+    required_packages = ["pytube", "moviepy", "clipboard"]
+    for package in required_packages:
+        try:
+            __import__(package)
+        except ImportError:
+            install_package(package)
+
+
+def choose_output_directory():
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    return filedialog.askdirectory()  # Show directory selection dialog and return the chosen directory
+
+
+def get_input_with_clipboard(prompt):
+    url = input(prompt)
+    clipboard_url = clipboard.paste().strip()
+    if clipboard_url and (clipboard_url.startswith("https://www.youtube.com/") or clipboard_url.startswith(
+            "https://youtu.be/")):
+        print(f"YouTube URL detected from clipboard: {clipboard_url}")
+        if input("Would you like to use this URL? (y/n): ").lower() == 'y':
+            url = clipboard_url
+    return url
+
+
+def download_audio(url, output_path, file_format):
+    try:
+        yt = YouTube(url)
+        audio_stream = yt.streams.filter(only_audio=True).first()
+        if file_format.lower() == 'mp3':
+            audio_file_path = audio_stream.download(output_path=output_path)
+            os.rename(audio_file_path, audio_file_path.replace(".mp4", ".mp3"))
+        elif file_format.lower() == 'wav':
+            audio_file_path = audio_stream.download(output_path=output_path)
+            os.rename(audio_file_path, audio_file_path.replace(".mp4", ".wav"))
+        print(f"{file_format.upper()} file saved as: {audio_file_path.replace('.mp4', '.' + file_format.lower())}")
+        return audio_file_path
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return None
+
+
+def download_playlist_audio(url, output_path, file_format):
+    try:
+        playlist = Playlist(url)
+        total_videos = len(playlist.video_urls)
+        for index, video_url in enumerate(playlist.video_urls, start=1):
+            remaining = total_videos - index
+            print(f"Downloading video {index}/{total_videos}, {remaining} remaining")
+            download_audio(video_url, output_path, file_format)
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+
+
+if __name__ == "__main__":
+    # Check for updates and install required packages
+    check_and_install_required_packages()
+    check_for_updates("HurtfulMC", "YTDL", "1.3")
+
+    while True:
+        url_type = input("Enter '1' for single video URL, '2' for playlist URL, or 'quit' to exit: ")
+        if url_type == '1':
+            video_url = get_input_with_clipboard(
+                "Enter the URL of the YouTube video or press Enter to paste from clipboard: ")
+            file_format = input("Enter the file format (MP3 or WAV): ").lower()
+            if file_format not in ['mp3', 'wav']:
+                print("Invalid file format. Please enter 'MP3' or 'WAV'.")
+                continue
+            output_path = choose_output_directory()
+            if output_path:
+                download_audio(video_url, output_path, file_format)
+        elif url_type == '2':
+            playlist_url = get_input_with_clipboard(
+                "Enter the URL of the YouTube playlist or press Enter to paste from clipboard: ")
+            file_format = input("Enter the file format (MP3 or WAV): ").lower()
+            if file_format not in ['mp3', 'wav']:
+                print("Invalid file format. Please enter 'MP3' or 'WAV'.")
+                continue
+            output_path = choose_output_directory()
+            if output_path:
+                download_playlist_audio(playlist_url, output_path, file_format)
+        elif url_type.lower() == 'quit':
+            break
+        else:
+            print("Invalid option. Please enter '1', '2', or 'quit'.")
